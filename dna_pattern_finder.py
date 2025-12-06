@@ -31,7 +31,8 @@ def main():
 
     while choice != "Q":
         if choice == "S":
-            pass
+            handle_summary(sequence)
+
         elif choice == "M":
             pass
         elif choice == "G":
@@ -83,7 +84,30 @@ def load_sequence(filename):
     return sequence
 
 def get_base_count(sequence):
-    pass
+    """Return a dictionary mapping each base (A/C/G/T) to its count in the sequence."""
+
+    base_count = {}
+
+    for base in VALID_BASES:
+        base_count[base] = 0
+
+    for base in sequence:
+        base_count[base] += 1
+
+    return base_count
+
+def handle_summary(sequence):
+    """Display sequence data and statistics upon user input."""
+    dna_length = len(sequence)
+    base_counts = get_base_count(sequence)
+
+    print(f"Sequence length: {dna_length} bases.")
+    print(
+        f"A: {base_counts['A']}\t"
+        f"C: {base_counts['C']}\t"
+        f"G: {base_counts['G']}\t"
+        f"T: {base_counts['T']}\t"
+    )
 
 def calculate_gc_content(sequence):
     pass
