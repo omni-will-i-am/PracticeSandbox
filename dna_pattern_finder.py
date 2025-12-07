@@ -27,6 +27,9 @@ def main():
     print("Welcome to DNA Pattern Finder 1.0.")
     sequence, filename = get_valid_sequence()
 
+    last_motif = None
+    last_motif_positions = []
+
     print(MENU)
     choice = input(">>> ").upper()
 
@@ -38,11 +41,14 @@ def main():
             handle_motif_search(sequence)
 
         elif choice == "G":
-            pass
+            handle_window_gc(sequence)
+
         elif choice == "O":
-            pass
+            handle_orf_search(sequence)
+
         elif choice == "R":
-            pass
+            export_report(sequence, filename, last_motif, last_motif_positions)
+
         else:
             print("Invalid menu option.")
 
@@ -54,7 +60,6 @@ def main():
 
 def get_valid_sequence():
     """Prompt for a filename until a valid DNA sequence is loaded."""
-
     while True:
         filename = input("DNA file: ").strip()
         if filename == "":
@@ -90,7 +95,6 @@ def load_sequence(filename):
 
 def get_base_count(sequence):
     """Return a dictionary mapping each base (A/C/G/T) to its count in the sequence."""
-
     base_count = {}
 
     for base in VALID_BASES:
@@ -104,7 +108,6 @@ def get_base_count(sequence):
 
 def calculate_gc_content(sequence):
     """Return GC content of the sequence as a percentage."""
-
     base_count = get_base_count(sequence)
     dna_length = len(sequence)
     gc_bases = base_count["G"] + base_count["C"]
@@ -181,16 +184,167 @@ def handle_motif_search(sequence):
         display_positions = [position + 1 for position in positions]
         print("Motif positions:", ", ".join(str(position) for position in display_positions))
 
+    return motif, positions
+
+
 def calculate_window_gc(sequence, window_size):
-    pass
+    """Return a list of GC% values for non-overlapping windows of the given size."""
+    gc_percentages = []
+    sequence_length = len(sequence)
+
+    # Step in jumps of window_size: 0, window_size, 2*window_size, ...
+    for start in range(0, sequence_length, window_size):
+        end = start + window_size
+        window = sequence[start:end]  # last window may be shorter
+
+        # Just in case, guard against empty window (shouldn't happen)
+        if not window:
+            continue
+
+        gc_percent = calculate_gc_content(window)
+        gc_percentages.append(gc_percent)
+
+    return gc_percentages
+
+
+def get_valid_window_size(sequence_length):
+    """Prompt for a valid window size and return it as an int."""
+    window_size = 0
+    while window_size <= 0 or window_size > sequence_length:
+        try:
+            window_size = int(input("Window size: "))
+            if window_size <= 0:
+                print("Window size must be > 0.")
+            elif window_size > sequence_length:
+                print("Window size must not be larger than the sequence length.")
+        except ValueError:
+            print("Invalid input - please enter a valid integer.")
+            window_size = 0
+    return window_size
+
+
+def handle_window_gc(sequence):
+    """Handle the GC content (windowed) menu option."""
+    sequence_length = len(sequence)
+    window_size = get_valid_window_size(sequence_length)
+
+    gc_percentages = calculate_window_gc(sequence, window_size)
+
+    for index, gc_percent in enumerate(gc_percentages, start=1):
+        # Convert to 1-based base positions
+        start_base = (index - 1) * window_size + 1
+        end_base = min(index * window_size, sequence_length)
+        print(f"Window {index} (bases {start_base}–{end_base}): {gc_percent:.1f}% GC")
 
 
 def find_orfs(sequence):
-    pass
+    """Return a list of (start_index, end_index) for ORFs in the sequence.
+
+        The indexes are 0-based and inclusive.
+        Start codon: ATG
+        Stop codons: TAA, TAG, TGA
+        """
+    start_codon = "ATG"
+    stop_codons = ("TAA", "TAG", "TGA")
+
+    orfs = []
+    i = 0
+    sequence_length = len(sequence)
+
+    while i <= sequence_length - 3:
+        codon = sequence[i:i + 3]
+        if codon == start_codon:
+            # Found a start; now scan codons in-frame
+            j = i + 3
+            while j <= sequence_length - 3:
+                stop_codon = sequence[j:j + 3]
+                if stop_codon in stop_codons:
+                    # end_index is inclusive: j, j+1, j+2 → so j+2
+                    end_index = j + 2
+                    orfs.append((i, end_index))
+                    break
+                j += 3
+            # Move to next position after this start; we could skip ahead by 3,
+            # but moving by 1 is simpler and still correct.
+            i += 1
+        else:
+            i += 1
+
+    return orfs
 
 
-def export_report():
-    pass
+def handle_orf_search(sequence):
+    """Handle the ORF-finding menu option."""
+    orfs = find_orfs(sequence)
+
+    if not orfs:
+        print("No ORFs found.")
+        return
+
+    print(f"Found {len(orfs)} ORFs:")
+    for index, (start, end) in enumerate(orfs, start=1):
+        # Convert 0-based to 1-based positions for display
+        start_pos = start + 1
+        end_pos = end + 1
+        length = end - start + 1
+        print(f"{index}) start: {start_pos}, stop: {end_pos}, length: {length} bases")
+
+
+def export_report(sequence, current_filename, last_motif, last_motif_positions):
+    """Export a text report summarising the current analysis."""
+    report_filename = input("Report filename: ").strip()
+    if report_filename == "":
+        print("Report filename cannot be blank.")
+        return
+
+    length = len(sequence)
+    base_counts = get_base_count(sequence)
+    gc_percent = calculate_gc_content(sequence)
+
+    # We can recompute ORFs here (no need to store them in main)
+    orfs = find_orfs(sequence)
+
+    try:
+        with open(report_filename, "w") as out_file:
+            print("DNA Pattern Finder Report", file=out_file)
+            print(f"Source file: {current_filename}", file=out_file)
+            print(file=out_file)  # blank line
+
+            print(f"Sequence length: {length} bases", file=out_file)
+            print(
+                f"A: {base_counts['A']}    "
+                f"C: {base_counts['C']}    "
+                f"G: {base_counts['G']}    "
+                f"T: {base_counts['T']}",
+                file=out_file,
+            )
+            print(f"GC content: {gc_percent:.1f}%", file=out_file)
+            print(file=out_file)
+
+            # Motif info
+            if last_motif is None:
+                print("Last motif searched: (none)", file=out_file)
+                print("Motif occurrences: n/a", file=out_file)
+            else:
+                print(f"Last motif searched: {last_motif}", file=out_file)
+                print(f"Motif occurrences: {len(last_motif_positions)}", file=out_file)
+            print(file=out_file)
+
+            # ORF info
+            print(f"Number of ORFs found (forward strand): {len(orfs)}", file=out_file)
+            for index, (start, end) in enumerate(orfs, start=1):
+                start_pos = start + 1
+                end_pos = end + 1
+                length_bases = end - start + 1
+                print(
+                    f"{index}) start: {start_pos}, stop: {end_pos}, "
+                    f"length: {length_bases} bases",
+                    file=out_file,
+                )
+
+        print(f"Report saved to {report_filename}")
+    except OSError as error:
+        print(f"Error saving report: {error}")
 
 
 if __name__ == "__main__":
